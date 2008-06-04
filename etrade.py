@@ -70,7 +70,11 @@ class Session:
         """
         req = urllib2.build_opener(GHTTPCookieProcessor(self._cookies))
 	req.addheaders = [('User-agent', "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.1.4322; .NET CLR 2.0.50727)")]
-        f = req.open(self._encode(url), data=urllib.urlencode(post_data))
+	if post_data.__class__ == dict:
+		post = urllib.urlencode(post_data)
+	else:
+		post = post_data
+        f = req.open(self._encode(url), data=post)
         if f.headers.dict.has_key('set-cookie'):
             self._cookies.extractCookies(f)
         return f
@@ -90,27 +94,13 @@ class Session:
     def _validateMarket(self, market):
 	raise NotImplementedError
 
-    def fetchOption(self, symbol, market):
-	mv = self._validateMarket(market)
-	url = self._getOptionUrl()
-	params = {'__T_1_1__2FAnalysisRequest_2Foscar_2FSYM' : symbol, '__T_2_1__2FAnalysisRequest_2Foscar_2FXXREG' : mv, '__T_4_1__2FAnalysisRequest_2Foscar_2FXXIOA' : 'A', '__T_3_1__2FAnalysisRequest_2Foscar_2FXXCPB' : 'B'}
-	p = self.getPage(url, params).read()
-	result = []
-	re_opt = re.compile('<td align="left" colspan="20"><b>Options Expiration: </b>([^<]+)</td>(.*?)(<tr bgcolor="#ffffff">|</tbody>)', re.M | re.S)	
-	opts = re_opt.findall(p)
-	re_tr = re.compile('<td class="[^"]+">([^<]+)</td><td class="[^"]+">([^<]+)</td><td class="[^"]+">([^<]+)</td><td class="[^"]+"><span style="[^"]+">([^<]+)</span></td><td class="[^"]+">([^<]+)</td><td class="[^"]+">([^<]+)</td><td class="[^"]+">([^<]+)</td><td bgcolor="[^"]+"><font color="[^"]+">([^<]+)</font></td>')
-	for expiration, data, n in opts:
-		o = re_tr.findall(data)
-		for i in range(0, len(o)-1, 2):
-			result.append(o[i] + ('call', ))
-			result.append(o[i+1] + ('put', ))
-	return result
-
 
 class CanadaSession(Session):
+	
 	def __init__(self, username, password):
 		Session.__init__(self, username, password)
 		self._markets = {'U.S.' : 'A', 'CDN' : 'C'}
+		self._columns = ['SYMBOL', 'STRIKE', 'BID', 'ASK', 'LAST', 'VALUE', 'OVERVALUED', 'DELTA', 'GAMMA', 'THETA', 'VEGA', 'VOLUME', 'OPENINTEREST']
 
 	def doLogin(self):
 		url = "https://swww.canada.etrade.com/login.fcc"	
@@ -121,10 +111,42 @@ class CanadaSession(Session):
 		return self
 
 	def _getOptionUrl(self):
-		return "https://canada.etrade.ultraoptions.com/analysis.jsp"
+		return "https://canada.etrade.ultraoptions.com/analysis.jsp?indx=3"
 
 	def _validateMarket(self, market):
 		if not market in ['U.S.', 'CDN']:
 			raise InvalidMarketError
 		return self._markets[market]
 
+
+    	def fetchOption(self, symbol, market):
+		mv = self._validateMarket(market)
+		url = self._getOptionUrl()
+		params = {'__T_1_1__2FAnalysisRequest_2Foscar_2FSYM' : symbol, '__T_2_1__2FAnalysisRequest_2Foscar_2FXXREG' : mv, '__T_4_1__2FAnalysisRequest_2Foscar_2FXXIOA' : 'A', '__T_3_1__2FAnalysisRequest_2Foscar_2FXXCPB' : 'B'}
+		p = self.getPage(url, params).read()
+		result = []
+		re_opt = re.compile('<td align="left" colspan="20"><b>Options Expiration: </b>([^<]+)</td>(.*?)(<tr bgcolor="#ffffff">|</tbody>)', re.M | re.S)	
+		opts = re_opt.findall(p)
+		tag = '([^>]+)'
+		re_tr = re.compile('<td class="option">%s</td><td bgcolor="#cccccc"><font color="#003399">%s</font></td><td class="option">%s</td><td class="option">%s</td><td class="option"><span style="color: #cc9900">%s</span></td><td class="option">%s</td><td class="option">%s</td><td class="option">%s</td><td class="option">%s</td><td class="option">%s</td><td class="option">%s</td><td class="option">%s</td><td class="option">%s</td>' % ((tag,) * 13))
+		for expiration, data, n in opts:
+			o = re_tr.findall(data)
+			for opt_array in o:
+				opt = {}
+				for i in range(0, len(self._columns)): opt[self._columns[i]] = opt_array[i]
+				print opt
+		return result
+
+
+
+	def getTopIssues(self):
+		tag = '[^<]+'
+		reg = re.compile('<td>(%s)</td><td>(%s)</td><td class="data">(%s)</td><td class="data">(%s)</td><td class="data">(%s)</td>' % ((tag,)*5))
+		pus = self.getPage("https://canada.etrade.ultraoptions.com/analysis.jsp?indx=5&sym=&reg=", {}).read()
+		opts = [f + ('US',) for f in reg.findall(pus)]
+		pcan = self.getPage("https://canada.etrade.ultraoptions.com/analysis.jsp?indx=6&sym=&reg=", {}).read()
+		opts += [f + ('CDN',) for f in reg.findall(pcan)]
+		r = []
+		r.append(opts[0:10] + opts[20:30])
+		r.append(opts[10:20] + opts[30:40])
+		return r	
