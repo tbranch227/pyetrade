@@ -100,7 +100,7 @@ class CanadaSession(Session):
 	def __init__(self, username, password):
 		Session.__init__(self, username, password)
 		self._markets = {'U.S.' : 'A', 'CDN' : 'C'}
-		self._columns = ['SYMBOL', 'STRIKE', 'BID', 'ASK', 'LAST', 'VALUE', 'OVERVALUED', 'DELTA', 'GAMMA', 'THETA', 'VEGA', 'VOLUME', 'OPENINTEREST']
+		self._columns = ['SYMBOL', 'STRIKE', 'BID', 'ASK', 'LAST', 'VALUE', 'OVER', 'DELTA', 'GAMMA', 'THETA', 'VEGA', 'VOLUME', 'OPENS']
 
 	def doLogin(self):
 		url = "https://swww.canada.etrade.com/login.fcc"	
@@ -134,7 +134,7 @@ class CanadaSession(Session):
 			for opt_array in o:
 				opt = {}
 				for i in range(0, len(self._columns)): opt[self._columns[i]] = opt_array[i]
-				print opt
+				result.append(opt)
 		return result
 
 
